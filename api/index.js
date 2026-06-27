@@ -1,37 +1,37 @@
 module.exports = async (req, res) => {
-  // CORS পলিসি এরর দূর করার জন্য হেডার যোগ করা
-  res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-
-  // যদি প্রি-ফ্লাইট (OPTIONS) রিকোয়েস্ট আসে
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+  res.setHeader('Content-Type', 'audio/x-mpegurl');
+  res.setHeader('Content-Disposition', 'inline; filename="playlist.m3u"');
 
   try {
-    const response = await fetch('https://rslivetv.vercel.app/', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+    // ইন্টারনেটের সবচেয়ে বড় অটো-আপডেট ডাটাবেজ থেকে লিংক নেওয়া
+    const response = await fetch('https://iptv-org.github.io/iptv/index.m3u');
+    const data = await response.text();
+
+    const lines = data.split('\n');
+    let filteredPlaylist = "#EXTM3U\n\n";
+    let keepChannel = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i].trim();
+
+      if (line.startsWith('#EXTINF')) {
+        // শুধু বাংলাদেশ (Bangladesh) এবং খেলাধুলার (Sports) চ্যানেলগুলো ফিল্টার করা
+        if (line.toLowerCase().includes('bangladesh') || 
+            line.toLowerCase().includes('sports') || 
+            line.toLowerCase().includes('tvg-country="bd"')) {
+          filteredPlaylist += line + "\n";
+          keepChannel = true;
+        } else {
+          keepChannel = false;
+        }
+      } else if (line.startsWith('http') && keepChannel) {
+        filteredPlaylist += line + "\n\n";
+        keepChannel = false; // রিসেট
       }
-    });
-    const html = await response.text();
+    }
 
-    const regex = /(https?:\/\/[^\s"'><]+?\.m3u8[^\s"'><]*)/g;
-    const matches = html.match(regex) || [];
-
-    let m3uPlaylist = "#EXTM3U\n";
-    
-    const uniqueLinks = [...new Set(matches)];
-    uniqueLinks.forEach((link, index) => {
-      m3uPlaylist += `#EXTINF:-1 tvg-id="channel_${index}" tvg-logo="", Channel ${index + 1}\n${link}\n\n`;
-    });
-
-    res.setHeader('Content-Type', 'audio/x-mpegurl');
-    res.setHeader('Content-Disposition', 'inline; filename="playlist.m3u"');
-    res.status(200).send(m3uPlaylist);
+    res.status(200).send(filteredPlaylist);
   } catch (error) {
     res.status(500).send("#EXTM3U\n#EXTINF:-1, Error loading playlist\nhttps://example.com/error.m3u8");
   }
